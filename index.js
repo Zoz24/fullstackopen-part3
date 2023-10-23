@@ -11,35 +11,6 @@ app.use(express.static("dist"));
 app.use(cors());
 morgan.token("body", (req, res) => JSON.stringify(req.body));
 
-let persons = [
-  {
-    id: 1,
-    name: "Arto Hellas",
-    number: "040-123456",
-  },
-  {
-    id: 2,
-    name: "Ada Lovelace",
-    number: "39-44-5323523",
-  },
-  {
-    id: 3,
-    name: "Dan Abramov",
-    number: "12-43-234345",
-  },
-  {
-    id: 4,
-    name: "Mary Poppendieck",
-    number: "39-23-6423122",
-  },
-];
-
-app.get("/", (req, res) => {
-  Person.find({}).then((persons) => {
-    res.json(persons);
-  });
-});
-
 app.get("/api/persons", (req, res) => {
   Person.find({}).then((persons) => {
     res.json(persons);
@@ -59,12 +30,12 @@ app.get("/api/persons/:id", (req, res) => {
     .catch((error) => next(error));
 });
 
-app.delete("/api/persons/:id", (req, res) => {
-  const id = Number(req.params.id);
-
-  persons = persons.filter((person) => person.id !== id);
-
-  res.status(204).end();
+app.delete("/api/persons/:id", (req, res, next) => {
+  Person.findByIdAndRemove(req.params.id)
+    .then((result) => {
+      res.status(204).end();
+    })
+    .catch((error) => next(error));
 });
 
 app.post("/api/persons", (req, res, next) => {
@@ -89,12 +60,55 @@ app.post("/api/persons", (req, res, next) => {
     .catch((error) => next(error));
 });
 
-app.get("/api/info", (req, res) => {
-  res.send(
-    `<p>Phonebook has info for ${persons.length} people</p>
-        <p>${new Date()}</p>`
-  );
+app.put("/api/persons/:id", (req, res, next) => {
+  const { name, number } = req.body;
+
+  Person.findByIdAndUpdate(
+    req.params.id,
+    { name, number },
+    { new: true, runValidators: true, context: "query" }
+  )
+    .then((updatedPerson) => {
+      res.json(updatedPerson);
+    })
+    .catch((error) => next(error));
 });
+
+app.get("/api/info", (req, res) => {
+  Person.countDocuments({})
+    .then((count) => {
+      res.send(
+        `<p>Phonebook has info for ${count} people</p>
+        <p>${new Date()}</p>`
+      );
+    })
+    .catch((error) => {
+      console.error(error);
+      res.status(500).send("An error occurred while fetching the data");
+    });
+});
+
+const unknownEndpoint = (req, res) => {
+  res.status(404).send({ error: "unknown endpoint" });
+};
+
+// handler of requests with unknown endpoint
+app.use(unknownEndpoint);
+
+const errorHandler = (error, req, res, next) => {
+  console.error(error.message);
+
+  if (error.name === "CastError") {
+    return res.status(400).send({ error: "malformatted id" });
+  } else if (error.name === "ValidationError") {
+    return res.status(400).json({ error: error.message });
+  }
+
+  next(error);
+};
+
+// this has to be the last loaded middleware.
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 3001;
 
